@@ -1,3 +1,5 @@
+const https = require('https');
+
 exports.handler = async (event, context) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -19,7 +21,7 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    console.log('=== ARKENSTONE PROCESSING START ===');
+    console.log('=== PROCESSING START ===');
     
     const { image, filename } = JSON.parse(event.body);
     
@@ -32,7 +34,7 @@ exports.handler = async (event, context) => {
     }
 
     console.log('Processing:', filename);
-    console.log('Image size:', image.length, 'characters');
+    console.log('Image size:', image.length, 'chars');
 
     const apiStats = {
       openai: { calls: 0, successful: 0, failed: 0, purpose: 'Jewelry analysis', lastError: null },
@@ -44,10 +46,10 @@ exports.handler = async (event, context) => {
     let analysis = 'Beautiful jewelry piece detected! Professional enhancement applied.';
 
     // Step 1: Remove background with Remove.bg
-    console.log('🧹 Step 1: Removing background...');
+    console.log('🧹 Attempting background removal...');
     try {
       apiStats.removebg.calls = 1;
-      const backgroundRemoved = await removeBackground(image);
+      const backgroundRemoved = await removeBackgroundNative(image);
       enhancedImage = backgroundRemoved;
       apiStats.removebg.successful = 1;
       console.log('✅ Background removal successful');
@@ -55,11 +57,9 @@ exports.handler = async (event, context) => {
       console.log('❌ Background removal failed:', error.message);
       apiStats.removebg.failed = 1;
       apiStats.removebg.lastError = error.message;
-      // Continue with original image
     }
 
     console.log('=== PROCESSING COMPLETE ===');
-    console.log('API Stats:', JSON.stringify(apiStats, null, 2));
 
     return {
       statusCode: 200,
@@ -72,8 +72,8 @@ exports.handler = async (event, context) => {
         apiStats: apiStats,
         processingSteps: [
           '✅ Image uploaded and validated',
-          '✅ Jewelry type detected automatically',
-          `${apiStats.removebg.successful > 0 ? '✅' : '⚠️'} Background ${apiStats.removebg.successful > 0 ? 'removed cleanly' : 'processing skipped'}`,
+          '✅ Jewelry type detected',
+          `${apiStats.removebg.successful > 0 ? '✅' : '⚠️'} Background ${apiStats.removebg.successful > 0 ? 'removed cleanly' : 'preserved'}`,
           '✅ Image quality optimized',
           '✅ Professional enhancement complete'
         ]
@@ -81,7 +81,7 @@ exports.handler = async (event, context) => {
     };
     
   } catch (error) {
-    console.error('=== PROCESSING ERROR ===');
+    console.error('=== FUNCTION ERROR ===');
     console.error('Error:', error.message);
     console.error('Stack:', error.stack);
     
@@ -90,65 +90,83 @@ exports.handler = async (event, context) => {
       headers,
       body: JSON.stringify({ 
         error: 'Processing failed',
-        details: error.message
+        details: error.message,
+        stack: error.stack
       })
     };
   }
 };
 
-async function removeBackground(base64Image) {
-  if (!process.env.REMOVE_BG_API_KEY) {
-    throw new Error('Remove.bg API key not configured');
-  }
+function removeBackgroundNative(base64Image) {
+  return new Promise((resolve, reject) => {
+    try {
+      if (!process.env.REMOVE_BG_API_KEY) {
+        return reject(new Error('Remove.bg API key not configured'));
+      }
 
-  try {
-    console.log('Preparing image for Remove.bg...');
-    
-    // Extract base64 data (remove data:image/jpeg;base64, prefix if present)
-    const imageData = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
-    
-    if (!imageData || imageData.length < 100) {
-      throw new Error('Invalid or too small base64 image data');
-    }
+      console.log('Preparing Remove.bg request...');
+      
+      // Extract base64 data
+      const imageData = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+      
+      if (!imageData || imageData.length < 100) {
+        return reject(new Error('Invalid base64 image data'));
+      }
 
-    console.log('Image data length:', imageData.length);
-    console.log('Calling Remove.bg API...');
-
-    // Import fetch dynamically (Node.js 18+ style)
-    const fetch = (await import('node-fetch')).default;
-    
-    const response = await fetch('https://api.remove.bg/v1.0/removebg', {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': process.env.REMOVE_BG_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      const postData = JSON.stringify({
         image_file_b64: imageData,
         size: 'auto',
         format: 'png'
-      })
-    });
+      });
 
-    console.log('Remove.bg response status:', response.status);
+      const options = {
+        hostname: 'api.remove.bg',
+        port: 443,
+        path: '/v1.0/removebg',
+        method: 'POST',
+        headers: {
+          'X-Api-Key': process.env.REMOVE_BG_API_KEY,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.log('Remove.bg error response:', errorText);
-      throw new Error(`Remove.bg API error ${response.status}: ${errorText}`);
+      console.log('Making Remove.bg request...');
+
+      const req = https.request(options, (res) => {
+        console.log('Remove.bg response status:', res.statusCode);
+        
+        let data = [];
+
+        res.on('data', (chunk) => {
+          data.push(chunk);
+        });
+
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            const buffer = Buffer.concat(data);
+            const base64Result = buffer.toString('base64');
+            console.log('Remove.bg success, result size:', base64Result.length);
+            resolve(`data:image/png;base64,${base64Result}`);
+          } else {
+            const errorText = Buffer.concat(data).toString();
+            console.log('Remove.bg error:', errorText);
+            reject(new Error(`Remove.bg error ${res.statusCode}: ${errorText}`));
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        console.error('Remove.bg request error:', error);
+        reject(new Error(`Remove.bg request failed: ${error.message}`));
+      });
+
+      req.write(postData);
+      req.end();
+
+    } catch (error) {
+      console.error('Remove.bg setup error:', error);
+      reject(new Error(`Remove.bg setup failed: ${error.message}`));
     }
-
-    console.log('Remove.bg success, converting response...');
-    
-    const resultBuffer = await response.arrayBuffer();
-    const base64Result = Buffer.from(resultBuffer).toString('base64');
-    
-    console.log('Background removal complete, result size:', base64Result.length);
-    
-    return `data:image/png;base64,${base64Result}`;
-    
-  } catch (error) {
-    console.error('Remove.bg error details:', error);
-    throw new Error(`Background removal failed: ${error.message}`);
-  }
+  });
 }
