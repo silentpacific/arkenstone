@@ -1,4 +1,3 @@
-// src/components/UploadSection.jsx
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 
@@ -6,6 +5,7 @@ const UploadSection = () => {
   const [uploadedImage, setUploadedImage] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('idle'); // idle, processing, complete, error
+  const [processingResult, setProcessingResult] = useState(null);
 
   const onDrop = useCallback(async (acceptedFiles) => {
     const file = acceptedFiles[0];
@@ -34,8 +34,7 @@ const UploadSection = () => {
         size: file.size
       });
 
-      // Start processing immediately
-      await processImage(file);
+      console.log('Image uploaded, starting processing...');
       
     } catch (error) {
       console.error('Upload error:', error);
@@ -45,12 +44,17 @@ const UploadSection = () => {
     }
   }, []);
 
-  const processImage = async (file) => {
+  const startProcessing = async () => {
+    if (!uploadedImage) return;
+    
+    console.log('Starting processing...');
     setProcessingStatus('processing');
     
     try {
       // Convert file to base64 for API
-      const base64 = await fileToBase64(file);
+      const base64 = await fileToBase64(uploadedImage.file);
+      
+      console.log('Calling processing API...');
       
       // Call our processing function
       const response = await fetch('/.netlify/functions/process-jewelry', {
@@ -60,19 +64,21 @@ const UploadSection = () => {
         },
         body: JSON.stringify({
           image: base64,
-          filename: file.name
+          filename: uploadedImage.name
         })
       });
 
+      console.log('API response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Processing failed');
+        throw new Error(`Processing failed with status: ${response.status}`);
       }
 
       const result = await response.json();
-      setProcessingStatus('complete');
+      console.log('Processing result:', result);
       
-      // Handle successful processing
-      console.log('Processing complete:', result);
+      setProcessingResult(result);
+      setProcessingStatus('complete');
       
     } catch (error) {
       console.error('Processing error:', error);
@@ -98,6 +104,17 @@ const UploadSection = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const handlePayment = () => {
+    console.log('Payment button clicked!');
+    alert('Payment processing coming soon! For now, this confirms the enhancement worked.');
+  };
+
+  const resetUploader = () => {
+    setUploadedImage(null);
+    setProcessingStatus('idle');
+    setProcessingResult(null);
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -110,8 +127,15 @@ const UploadSection = () => {
     return <ProcessingStatus />;
   }
 
-  if (processingStatus === 'complete') {
-    return <ProcessingResults uploadedImage={uploadedImage} />;
+  if (processingStatus === 'complete' && processingResult) {
+    return (
+      <ProcessingResults 
+        uploadedImage={uploadedImage} 
+        processingResult={processingResult}
+        onPayment={handlePayment}
+        onReset={resetUploader}
+      />
+    );
   }
 
   return (
@@ -156,16 +180,26 @@ const UploadSection = () => {
                 <p className="font-medium">{uploadedImage.name}</p>
                 <p className="text-blue-300 text-sm">{formatFileSize(uploadedImage.size)}</p>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setUploadedImage(null);
-                  setProcessingStatus('idle');
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                Upload Different Photo
-              </button>
+              <div className="space-x-4">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startProcessing();
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition-colors font-semibold"
+                >
+                  ✨ Enhance for $15
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetUploader();
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg transition-colors"
+                >
+                  Upload Different Photo
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -238,12 +272,12 @@ const ProcessingStatus = () => {
   React.useEffect(() => {
     const interval = setInterval(() => {
       setProgress(prev => {
-        const newProgress = prev + 2;
+        const newProgress = prev + 3; // Faster progress
         const newStep = Math.floor(newProgress / 16.67); // 6 steps = 100/6 = 16.67% each
         setCurrentStep(Math.min(newStep, steps.length - 1));
         return Math.min(newProgress, 100);
       });
-    }, 100);
+    }, 150); // Update every 150ms
 
     return () => clearInterval(interval);
   }, []);
@@ -287,12 +321,13 @@ const ProcessingStatus = () => {
                   'bg-slate-600'
                 }`} />
                 <span>{step.name}</span>
+                {index < currentStep && <span className="ml-auto text-green-400">✓</span>}
               </div>
             ))}
           </div>
 
           <div className="mt-6 text-blue-300 text-sm">
-            ⏱️ Estimated time: {Math.max(60 - Math.round(progress * 0.6), 5)} seconds
+            ⏱️ Estimated time: {Math.max(10 - Math.round(progress * 0.1), 1)} seconds
           </div>
         </div>
       </div>
@@ -300,8 +335,8 @@ const ProcessingStatus = () => {
   );
 };
 
-// Processing Results Component (placeholder)
-const ProcessingResults = ({ uploadedImage }) => {
+// Processing Results Component
+const ProcessingResults = ({ uploadedImage, processingResult, onPayment, onReset }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center p-4">
       <div className="max-w-4xl w-full">
@@ -309,37 +344,68 @@ const ProcessingResults = ({ uploadedImage }) => {
           <h2 className="text-3xl font-bold text-white mb-4">
             🎉 Your jewelry photo has been transformed!
           </h2>
+          <p className="text-blue-300">
+            {processingResult.analysis}
+          </p>
         </div>
         
-        <div className="grid md:grid-cols-2 gap-8">
+        <div className="grid md:grid-cols-2 gap-8 mb-8">
           {/* Before */}
           <div className="text-center">
             <h3 className="text-xl font-semibold text-white mb-4">Before</h3>
-            <img 
-              src={uploadedImage.preview} 
-              alt="Before" 
-              className="w-full rounded-lg shadow-lg"
-            />
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-blue-500/20">
+              <img 
+                src={uploadedImage.preview} 
+                alt="Before" 
+                className="w-full max-h-80 object-contain rounded-lg shadow-lg"
+              />
+            </div>
           </div>
           
-          {/* After (placeholder) */}
+          {/* After */}
           <div className="text-center">
             <h3 className="text-xl font-semibold text-white mb-4">After</h3>
-            <div className="w-full aspect-square bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg shadow-lg flex items-center justify-center">
-              <div className="text-white text-center">
-                <div className="text-4xl mb-2">✨</div>
-                <p>Enhanced version will appear here</p>
-                <p className="text-sm opacity-75">4K resolution • Professional quality</p>
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-blue-500/20">
+              <div className="w-full max-h-80 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg shadow-lg flex items-center justify-center aspect-square">
+                <div className="text-white text-center">
+                  <div className="text-4xl mb-2">✨</div>
+                  <p className="font-semibold">Enhanced version will appear here</p>
+                  <p className="text-sm opacity-75 mt-2">4K resolution • Professional quality</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="text-center mt-8">
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors">
+        <div className="text-center space-y-4">
+          <button 
+            onClick={onPayment}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-semibold transition-colors text-lg"
+          >
             💳 Pay $15 & Download High-Quality Version
           </button>
+          
+          <div className="space-x-4">
+            <button 
+              onClick={onReset}
+              className="bg-slate-600 hover:bg-slate-700 text-white px-6 py-2 rounded-lg transition-colors"
+            >
+              Upload Another Image
+            </button>
+          </div>
         </div>
+
+        {/* Debug info */}
+        {processingResult.debug && (
+          <div className="mt-8 text-center">
+            <details className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-blue-500/20">
+              <summary className="text-blue-300 cursor-pointer">Debug Info</summary>
+              <pre className="text-left text-xs text-blue-200 mt-2 overflow-auto">
+                {JSON.stringify(processingResult, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
       </div>
     </div>
   );
