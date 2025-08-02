@@ -1,10 +1,17 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.jsx'
+console.log('main.jsx is loading...')
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+
+console.log('React imported:', React)
+
+const root = createRoot(document.getElementById('root'))
+
+root.render(
+  <div style={{ color: 'white', padding: '20px', fontSize: '24px' }}>
+    <h1>🏔️ Hello World!</h1>
+    <p>React is working with JSX!</p>
+  </div>
 )
+
+console.log('main.jsx finished loading')
