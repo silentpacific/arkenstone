@@ -10,6 +10,11 @@
         <button type="submit">Upload & Process</button>
     </form>
 
+    {% if error %}
+        <h2 style="color: red;">Error</h2>
+        <p>{{ error }}</p>
+    {% endif %}
+
     {% if download_links %}
         <h2>Download Processed Image</h2>
         <ul>

@@ -24,6 +24,17 @@ async def upload_form(request: Request):
 
 @app.post("/upload/", response_class=HTMLResponse)
 async def upload_image(request: Request, file: UploadFile = File(...)):
+    # Debug: Check if API token is loaded
+    api_token = os.getenv("REPLICATE_API_TOKEN")
+    if not api_token:
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "error": "Replicate API token not found. Please check environment variables."
+        })
+    
+    # Set the token explicitly
+    replicate.api_token = api_token
+    
     image_bytes = await file.read()
 
     # Convert to base64 for Replicate API
@@ -31,11 +42,17 @@ async def upload_image(request: Request, file: UploadFile = File(...)):
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     data_uri = f"data:image/{file.content_type.split('/')[-1]};base64,{image_b64}"
 
-    # Send to Replicate for background removal + resize
-    output_url = replicate.run(
-        "cjwbw/rembg:1.4.1",
-        input={"image": data_uri}
-    )
+    try:
+        # Send to Replicate for background removal + resize
+        output_url = replicate.run(
+            "cjwbw/rembg:1.4.1",
+            input={"image": data_uri}
+        )
+    except Exception as e:
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "error": f"Replicate API error: {str(e)}"
+        })
 
     # Download processed image
     import requests
