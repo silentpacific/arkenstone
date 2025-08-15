@@ -1,0 +1,50 @@
+import os
+from fastapi import FastAPI, File, UploadFile, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+import replicate
+from PIL import Image
+import io
+
+load_dotenv()
+
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
+
+@app.get("/", response_class=HTMLResponse)
+async def upload_form(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.post("/upload/", response_class=HTMLResponse)
+async def upload_image(request: Request, file: UploadFile = File(...)):
+    image_bytes = await file.read()
+
+    # Send to Replicate for background removal + resize
+    output_url = replicate.run(
+        "cjwbw/rembg:1.4.1",
+        input={"image": image_bytes}
+    )
+
+    # Download processed image
+    import requests
+    r = requests.get(output_url)
+    img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+
+    # Center on square white background 2000x2000
+    side = max(img.width, img.height)
+    canvas = Image.new("RGBA", (side, side), (255, 255, 255, 255))
+    canvas.paste(img, ((side - img.width)//2, (side - img.height)//2), img)
+    canvas = canvas.resize((2000, 2000), Image.LANCZOS)
+
+    # Save
+    os.makedirs("downloads", exist_ok=True)
+    out_path = f"downloads/{file.filename}_enhanced.png"
+    canvas.save(out_path)
+
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "download_links": [f"/downloads/{file.filename}_enhanced.png"]
+    })
