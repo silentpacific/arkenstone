@@ -45,7 +45,7 @@ async def upload_image(request: Request, file: UploadFile = File(...)):
     try:
         # Send to Replicate for background removal + resize
         output_url = replicate.run(
-            "cjwbw/rembg:1.4.1",
+            "rembg:1.4.2",
             input={"image": data_uri}
         )
     except Exception as e:
