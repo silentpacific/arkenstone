@@ -26,10 +26,15 @@ async def upload_form(request: Request):
 async def upload_image(request: Request, file: UploadFile = File(...)):
     image_bytes = await file.read()
 
+    # Convert to base64 for Replicate API
+    import base64
+    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+    data_uri = f"data:image/{file.content_type.split('/')[-1]};base64,{image_b64}"
+
     # Send to Replicate for background removal + resize
     output_url = replicate.run(
         "cjwbw/rembg:1.4.1",
-        input={"image": image_bytes}
+        input={"image": data_uri}
     )
 
     # Download processed image
