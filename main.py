@@ -12,6 +12,10 @@ load_dotenv()
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
+
+# Create downloads directory if it doesn't exist
+os.makedirs("downloads", exist_ok=True)
+
 app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 @app.get("/", response_class=HTMLResponse)
